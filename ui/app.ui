@@ -175,11 +175,6 @@
                         </child>
                       </object>
                     </child>
-                    <child>
-                      <object class="GtkButton" id="apply">
-                        <property name="label" translatable="yes">Aplicar</property>
-                      </object>
-                    </child>
                   </object>
                 </property>
               </object>
