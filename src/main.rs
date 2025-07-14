@@ -37,9 +37,18 @@ fn build_ui(app: &Application) {
     let switch_multi_pro: Switch = builder
         .object("switch_multi_pro")
         .expect("No se pudo encontrar el switch de Multi PRO");
+    let switch_windowspia: Switch = builder
+        .object("switch_windowspia")
+        .expect("No se pudo encontrar el switch de WindowSpia");
+    let switch_pornografia: Switch = builder
+        .object("switch_pornografia")
+        .expect("No se pudo encontrar el switch de Pornografia");
     let apply_button: Button = builder
         .object("apply_button")
         .expect("No se pudo encontrar el botón de aplicar");
+    let clean_button: Button = builder
+        .object("clean_button")
+        .expect("No se pudo encontrar el botón de limpiar");
     let loading_spinner: Spinner = builder
         .object("loading_spinner")
         .expect("No se pudo encontrar el spinner de carga");
@@ -58,12 +67,16 @@ fn build_ui(app: &Application) {
     let switch_facebook_clone = switch_facebook.clone();
     let switch_steven_clone = switch_steven.clone();
     let switch_multi_pro_clone = switch_multi_pro.clone();
+    let switch_windowspia_clone = switch_windowspia.clone();
+    let switch_pornografia_clone = switch_pornografia.clone();
     let loading_spinner_clone = loading_spinner.clone();
 
     apply_button.connect_clicked(move |_| {
         let facebook_active = switch_facebook_clone.is_active();
         let steven_active = switch_steven_clone.is_active();
         let multi_pro_active = switch_multi_pro_clone.is_active();
+        let windowspia_active = switch_windowspia_clone.is_active();
+        let pornografia_active = switch_pornografia_clone.is_active();
         let spinner = loading_spinner_clone.clone();
 
         glib::spawn_future_local(async move {
@@ -124,6 +137,78 @@ fn build_ui(app: &Application) {
                     println!("Descarga de Multi PRO completada.");
                 }
             }
+            if windowspia_active {
+                println!("Descargando archivo de WindowSpia...");
+                if let Err(e) = download_and_append_file(
+                    "https://raw.githubusercontent.com/crazy-max/WindowsSpyBlocker/master/data/hosts/spy.txt",
+                    &mut file,
+                )
+                .await
+                {
+                    eprintln!("Error al descargar el archivo de WindowSpia: {}", e);
+                } else {
+                    println!("Descarga de WindowSpia completada.");
+                }
+            }
+            if pornografia_active {
+                println!("Descargando archivo de Pornografia...");
+                if let Err(e) = download_and_append_file(
+                    "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn-only/hosts",
+                    &mut file,
+                )
+                .await
+                {
+                    eprintln!("Error al descargar el archivo de Pornografia: {}", e);
+                } else {
+                    println!("Descarga de Pornografia completada.");
+                }
+            }
+
+            println!("Limpiando la caché de DNS...");
+            let output = Command::new("ipconfig")
+                .arg("/flushdns")
+                .output();
+
+            match output {
+                Ok(output) => {
+                    if output.status.success() {
+                        println!("Caché de DNS limpiada correctamente.");
+                    } else {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        eprintln!("Error al limpiar la caché de DNS: {}", stderr);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error al ejecutar ipconfig /flushdns: {}", e);
+                }
+            }
+
+            spinner.set_visible(false);
+        });
+    });
+
+    clean_button.connect_clicked(move |_| {
+        let spinner = loading_spinner.clone();
+        glib::spawn_future_local(async move {
+            spinner.set_visible(true);
+
+            let system_root = env::var("SystemRoot").unwrap_or_else(|_|"C:\\Windows".to_string());
+            let mut hosts_path = PathBuf::from(system_root);
+            hosts_path.push("system32");
+            hosts_path.push("drivers");
+            hosts_path.push("etc");
+            hosts_path.push("hosts");
+
+            match File::create(&hosts_path) {
+                Ok(_) => {
+                    println!("Archivo hosts limpiado correctamente.");
+                }
+                Err(e) => {
+                    eprintln!("Error al limpiar el archivo hosts: {}. Asegúrate de ejecutar como administrador.", e);
+                    spinner.set_visible(false);
+                    return;
+                }
+            };
 
             println!("Limpiando la caché de DNS...");
             let output = Command::new("ipconfig")
