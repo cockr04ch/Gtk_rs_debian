@@ -5,7 +5,10 @@ use gtk::{
 };
 use reqwest::get;
 use std::fs::File;
-use std::io::copy;
+use std::io::Write;
+use std::process::Command;
+use std::env;
+use std::path::PathBuf;
 
 const APP_ID: &str = "org.gtk_rs.HelloWorld2";
 const UI_FILE: &str = "ui/app.ui"; // Ruta al archivo UI
@@ -31,6 +34,9 @@ fn build_ui(app: &Application) {
     let switch_steven: Switch = builder
         .object("switch_steven")
         .expect("No se pudo encontrar el switch de Steven");
+    let switch_multi_pro: Switch = builder
+        .object("switch_multi_pro")
+        .expect("No se pudo encontrar el switch de Multi PRO");
     let apply_button: Button = builder
         .object("apply_button")
         .expect("No se pudo encontrar el botón de aplicar");
@@ -51,20 +57,39 @@ fn build_ui(app: &Application) {
 
     let switch_facebook_clone = switch_facebook.clone();
     let switch_steven_clone = switch_steven.clone();
+    let switch_multi_pro_clone = switch_multi_pro.clone();
     let loading_spinner_clone = loading_spinner.clone();
 
     apply_button.connect_clicked(move |_| {
         let facebook_active = switch_facebook_clone.is_active();
         let steven_active = switch_steven_clone.is_active();
+        let multi_pro_active = switch_multi_pro_clone.is_active();
         let spinner = loading_spinner_clone.clone();
 
         glib::spawn_future_local(async move {
             spinner.set_visible(true);
+
+            let system_root = env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
+            let mut hosts_path = PathBuf::from(system_root);
+            hosts_path.push("system32");
+            hosts_path.push("drivers");
+            hosts_path.push("etc");
+            hosts_path.push("hosts");
+
+            let mut file = match File::create(&hosts_path) {
+                Ok(file) => file,
+                Err(e) => {
+                    eprintln!("Error al crear el archivo hosts: {}. Asegúrate de ejecutar como administrador.", e);
+                    spinner.set_visible(false);
+                    return;
+                }
+            };
+
             if facebook_active {
                 println!("Descargando archivo de Facebook...");
-                if let Err(e) = download_file(
-                    "https://proof.ovh.net/files/100Mio.dat",
-                    "facebook_download.dat",
+                if let Err(e) = download_and_append_file(
+                    "https://raw.githubusercontent.com/anudeepND/blacklist/master/facebook.txt",
+                    &mut file,
                 )
                 .await
                 {
@@ -75,9 +100,9 @@ fn build_ui(app: &Application) {
             }
             if steven_active {
                 println!("Descargando archivo de Steven...");
-                if let Err(e) = download_file(
+                if let Err(e) = download_and_append_file(
                     "https://proof.ovh.net/files/10Mio.dat",
-                    "steven_download.dat",
+                    &mut file,
                 )
                 .await
                 {
@@ -86,6 +111,39 @@ fn build_ui(app: &Application) {
                     println!("Descarga de Steven completada.");
                 }
             }
+            if multi_pro_active {
+                println!("Descargando archivo de Multi PRO...");
+                if let Err(e) = download_and_append_file(
+                    "https://raw.githubusercontent.com/hagezi/dns-blocklists/main/hosts/pro.txt",
+                    &mut file,
+                )
+                .await
+                {
+                    eprintln!("Error al descargar el archivo de Multi PRO: {}", e);
+                } else {
+                    println!("Descarga de Multi PRO completada.");
+                }
+            }
+
+            println!("Limpiando la caché de DNS...");
+            let output = Command::new("ipconfig")
+                .arg("/flushdns")
+                .output();
+
+            match output {
+                Ok(output) => {
+                    if output.status.success() {
+                        println!("Caché de DNS limpiada correctamente.");
+                    } else {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        eprintln!("Error al limpiar la caché de DNS: {}", stderr);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error al ejecutar ipconfig /flushdns: {}", e);
+                }
+            }
+
             spinner.set_visible(false);
         });
     });
@@ -93,10 +151,12 @@ fn build_ui(app: &Application) {
     window.present();
 }
 
-async fn download_file(url: &str, file_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+async fn download_and_append_file(
+    url: &str,
+    dest: &mut File,
+) -> Result<(), Box<dyn std::error::Error>> {
     let response = get(url).await?;
-    let mut dest = File::create(file_name)?;
     let content = response.bytes().await?;
-    copy(&mut content.as_ref(), &mut dest)?;
+    dest.write_all(content.as_ref())?;
     Ok(())
 }
