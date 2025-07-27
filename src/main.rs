@@ -194,6 +194,9 @@ fn build_ui(app: &Application) {
                 }
             }
 
+            // Cerrar explícitamente el archivo para evitar errores de acceso
+            drop(file);
+
             println!("Limpiando la caché de DNS...");
             let output = Command::new("ipconfig")
                 .arg("/flushdns")
@@ -230,7 +233,9 @@ fn build_ui(app: &Application) {
             hosts_path.push("hosts");
 
             match File::create(&hosts_path) {
-                Ok(_) => {
+                Ok(mut file) => {
+                    // Cerrar explícitamente el archivo
+                    drop(file);
                     println!("Archivo hosts limpiado correctamente.");
                 }
                 Err(e) => {
@@ -279,7 +284,7 @@ fn build_ui(app: &Application) {
 
         glib::spawn_future_local(async move {
             let request = OllamaRequest {
-                model: "deepseek-r1:8b",
+                model: "qwen3:0.6b",
                 prompt: &input,
                 stream: true,
             };
@@ -336,5 +341,6 @@ async fn download_and_append_file(
     let response = client.get(url).send().await?;
     let content = response.bytes().await?;
     dest.write_all(content.as_ref())?;
+    dest.flush()?; // Asegurar que los datos se escriban al disco
     Ok(())
 }
